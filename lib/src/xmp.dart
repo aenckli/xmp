@@ -18,10 +18,7 @@ class XMP {
   ///
   ///```
   static Map<String, dynamic> extract(Uint8List source, {bool raw = false}) {
-    if (source is! Uint8List) {
-      throw Exception('Not a Uint8List');
-    } else {
-      var result = <String, dynamic>{};
+      Map<String, dynamic>result = <String, dynamic>{};
       var buffer = latin1.decode(source, allowInvalid: false);
       int offsetBegin = buffer.indexOf(_markerBegin);
       if (offsetBegin != -1) {
@@ -38,10 +35,12 @@ class XMP {
           }
 
           // First rdf:Description
-          var rdf_Description =
+          List<XmlNode> rdf_Description =
               xml.descendants.where((node) => node is XmlElement).toList();
           rdf_Description.forEach((element) {
-            _addAttribute(result, element, raw);
+            if (element is XmlElement) {
+              _addAttribute(result, element, raw);
+            }
           });
 
           // Other selected known tags
@@ -50,13 +49,13 @@ class XMP {
               var tags = xml.findAllElements(tag);
               if (tags.isNotEmpty) {
                 tags.forEach((element) {
-                  var textList = element.descendants
-                      .where((node) =>
-                          node is XmlText && !node.text.trim().isEmpty)
+                  List<XmlNode> textList = element.descendants
+                      .where((XmlNode node) =>
+                          node is XmlText && !node.value.trim().isEmpty)
                       .toList();
-                  textList.forEach((text) {
+                  textList.forEach((XmlNode text) {
                     _addAttributeList(
-                        raw ? tag : camelToNormal(tag), text.text, result);
+                        raw ? tag : camelToNormal(tag), text.value ?? '', result);
                   });
                 });
               }
@@ -69,55 +68,57 @@ class XMP {
       } else {
         return {'Exception': 'Invalid Data'};
       }
-    }
+    // }
   }
 
   static void _addAttribute(
-      Map<String, dynamic> result, XmlElement element, bool raw) {
-    var attributeList = element.attributes.toList();
+    Map<String, dynamic> result, XmlElement element, bool raw) {
+      List<XmlAttribute> attributeList = element.attributes.toList();
 
-    var headerName;
+      String headerName = '';
 
-    if (!raw) {
-      var temporaryElement = element;
-      var temporaryName = temporaryElement.name.toString().toLowerCase();
+      if (!raw) {
+        XmlElement? temporaryElement = element; // XmlElement
+        String temporaryName = temporaryElement.name.toString().toLowerCase();
 
-      while (!_envelopeTags.every((element) => element != temporaryName)) {
-        temporaryElement = temporaryElement.parentElement;
-        if (temporaryElement == null) {
-          break;
+        while (!_envelopeTags.every((element) => element != temporaryName)) {
+          temporaryElement = temporaryElement!.parentElement; // parentElement may be null
+          if (temporaryElement == null) {
+            break;
+          }
+          temporaryName = temporaryElement.name.toString().toLowerCase();
         }
-        temporaryName = temporaryElement?.name?.toString()?.toLowerCase();
+        headerName = (temporaryElement?.name ?? element.name).toString();
+        if (headerName == 'null') {
+          throw Exception(
+              'If you find this exception, then PLEASE take the pain to post the issue with sample on https://github.com/justkawal/xmp.git. \n\n\t\t\t Thanks for improving ```OpEn SouRce CoMmUniTy```');
+        }
       }
-      headerName = (temporaryElement?.name ?? element.name).toString();
-      if (headerName == 'null') {
-        throw Exception(
-            'If you find this exception, then PLEASE take the pain to post the issue with sample on https://github.com/justkawal/xmp.git. \n\n\t\t\t Thanks for improving ```OpEn SouRce CoMmUniTy```');
-      }
-    }
 
-    attributeList.forEach((attribute) {
-      var attr = attribute.name.toString();
-      if (!attr.contains('xmlns:') && !attr.contains('xml:')) {
-        var endName = attribute.name.toString();
-        var value = attribute.value.toString();
-        result[(raw
-                ? '$endName'
-                : '${camelToNormal(headerName)} ${camelToNormal(endName)}')
-            .toString()
-            .trim()] = value ?? '';
+      attributeList.forEach((attribute) {
+        String attr = attribute.name.toString();
+        if (!attr.contains('xmlns:') && !attr.contains('xml:')) {
+          String endName = attribute.name.toString();
+          String value = attribute.value.toString();
+          result[(raw
+                  ? '$endName'
+                  : '${camelToNormal(headerName)} ${camelToNormal(endName)}')
+              .toString()
+              .trim()] = value/* ?? ''*/;
+        }
       }
-    });
+    );
 
-    element.children.toList().forEach((child) {
+    element.children.toList().forEach((XmlNode child) {
       if (child is! XmlText) {
-        _addAttribute(result, child, raw);
+        if (child is XmlElement)
+          _addAttribute(result, child, raw);
       }
     });
   }
 
   static String camelToNormal(String text) {
-    if (text == null || text.isEmpty) {
+    if (text.isEmpty) {
       return '';
     }
     // split on `:`
